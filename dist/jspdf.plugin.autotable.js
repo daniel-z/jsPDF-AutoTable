@@ -12,10 +12,10 @@
     var FONT_ROW_RATIO = 1.15;
 
     var doc, // The current jspdf instance
-        cursor, // An object keeping track of the x and y position of the next table cell to draw
-        settings, // Default options merged with user options
-        pageCount, // The  page count the current table spans
-        table; // The current Table instance
+      cursor, // An object keeping track of the x and y position of the next table cell to draw
+      settings, // Default options merged with user options
+      pageCount, // The  page count the current table spans
+      table; // The current Table instance
 
     // Base style for all themes
     var defaultStyles = {
@@ -32,7 +32,7 @@
         valign: 'middle', // top, middle, bottom
         fillStyle: 'F', // 'S', 'F' or 'DF' (stroke, fill or fill then stroke)
         rowHeight: 20,
-        columnWidth: 'auto'
+        columnWidth: 'auto',
     };
 
     // Styles for the themes
@@ -91,6 +91,9 @@
             margin: 40,
             pageBreak: 'auto', // 'auto', 'avoid', 'always'
             tableWidth: 'auto', // number, 'auto', 'wrap'
+            overflow: 'linebreak',
+            pageBreakPosition: doc.internal.pageSize.height,
+            pageStartPosition: 0, // false indicates the margin.top value
 
             // Hooks
             createdHeaderCell: function (cell, data) {},
@@ -98,6 +101,8 @@
             drawHeaderRow: function (row, data) {},
             drawRow: function (row, data) {},
             drawHeaderCell: function (cell, data) {},
+            onStartPage: function (data) {},
+            onEndPage: function (data) {},
             drawCell: function (cell, data) {},
             beforePageContent: function (data) {},
             afterPageContent: function (data) {}
@@ -135,10 +140,11 @@
         if (settings.pageBreak === 'avoid') {
             minTableBottomPos += table.height;
         }
+
         if ((settings.pageBreak === 'always' && settings.startY !== false) ||
-            (settings.startY !== false && minTableBottomPos > doc.internal.pageSize.height)) {
+          (settings.startY !== false && minTableBottomPos > settings.pageBreakPosition)) {
             doc.addPage();
-            cursor.y = settings.margin.top;
+            cursor.y = settings.pageStartPosition || settings.margin.top;
         }
 
         applyStyles(userStyles);
@@ -175,12 +181,12 @@
      */
     API.autoTableHtmlToJson = function (table) {
         var data = [],
-            headers = [],
-            header = table.rows[0],
-            tableRow,
-            rowData,
-            i,
-            j;
+          headers = [],
+          header = table.rows[0],
+          tableRow,
+          rowData,
+          i,
+          j;
 
         for (i = 0; i < header.cells.length; i++) {
             headers.push(typeof header.cells[i] !== 'undefined' ? header.cells[i].textContent : '');
@@ -259,7 +265,9 @@
             console.error("Use of deprecated option: margins, use margin instead.");
         }
 
-        [['padding', 'cellPadding'], ['lineHeight', 'rowHeight'], 'fontSize', 'overflow'].forEach(function (o) {
+        settings.styles['overflow'] = settings['overflow'];
+
+        [['padding', 'cellPadding'], ['lineHeight', 'rowHeight'], 'fontSize'].forEach(function (o) {
             var deprecatedOption = typeof o === 'string' ? o : o[0];
             var style = typeof o === 'string' ? o : o[1];
             if (typeof settings[deprecatedOption] !== 'undefined') {
@@ -480,7 +488,7 @@
             if (isNewPage(row.height)) {
                 var samePageThreshold = 3;
                 if (row.height > row.heightStyle * samePageThreshold) {
-                    var remainingPageSpace = doc.internal.pageSize.height - cursor.y - settings.margin.bottom;
+                    var remainingPageSpace = settings.pageBreakPosition - cursor.y - settings.margin.bottom;
                     var lineCount = Math.floor(remainingPageSpace / (row.styles.fontSize * FONT_ROW_RATIO));
                     table.columns.forEach(function(col) {
                         var arr = row.cells[col.dataKey].text;
@@ -506,11 +514,17 @@
 
     function addPage() {
         settings.afterPageContent(hooksData());
+
+        settings.onEndPage(hooksData());
+
         doc.addPage();
         pageCount++;
         cursor = {x: settings.margin.left, y: settings.margin.top};
+
+        settings.onStartPage(hooksData());
+
         settings.beforePageContent(hooksData());
-        if (settings.drawHeaderRow(table.headerRow, hooksData({row: table.headerRow})) !== false) {
+        if (settings.drawHeaderRow(table.headerRow, hooksData({row: table.headerRow}), {afterNewPage: true}) !== false) {
             printRow(table.headerRow, settings.drawHeaderCell);
         }
     }
@@ -522,7 +536,7 @@
      */
     function isNewPage(rowHeight) {
         var afterRowPos = cursor.y + rowHeight + settings.margin.bottom;
-        return afterRowPos >= doc.internal.pageSize.height;
+        return afterRowPos >= settings.pageBreakPosition;
     }
 
     function printRow(row, hookHandler) {
