@@ -356,13 +356,16 @@
             row.styles = extend(themeStyles, userStyles);
             row.index = i;
             table.columns.forEach(function (column) {
+                var rawCellData = rawRow[column.dataKey];
                 var cell = new Cell();
-                cell.raw = rawRow[column.dataKey];
+                cell.indent = rawCellData.indent ? rawCellData.indent : 0;
+                cell.indentSize = cell.indent * 3; // 1 indent level is equal to 3mm
+                cell.raw = rawCellData.label ? rawCellData.label : rawCellData;
                 cell.styles = extend(row.styles, column.styles);
                 cell.text = typeof cell.raw !== 'undefined' ? '' + cell.raw : ''; // Stringify 0 and false, but not undefined
                 row.cells[column.dataKey] = cell;
                 settings.createdCell(cell, hooksData({column: column, row: row}));
-                cell.contentWidth = cell.styles.cellPadding * 2 + getStringWidth(cell.text, cell.styles);
+                cell.contentWidth = cell.styles.cellPadding * 2 + cell.indentSize + getStringWidth(cell.text, cell.styles);
                 cell.text = cell.text.split(splitRegex);
             });
             table.rows.push(row);
@@ -434,7 +437,7 @@
                 var cell = row.cells[col.dataKey];
                 col.x = cursorX;
                 applyStyles(cell.styles);
-                var textSpace = col.width - cell.styles.cellPadding * 2;
+                var textSpace = col.width - cell.styles.cellPadding * 2 - cell.indentSize;
                 if (cell.styles.overflow === 'linebreak') {
                     // Add one pt to textSpace to fix rounding error
                     cell.text = doc.splitTextToSize(cell.text, textSpace + 1, {fontSize: cell.styles.fontSize});
@@ -566,7 +569,8 @@
             } else if (cell.styles.halign === 'center') {
                 cell.textPos.x = cell.x + cell.width / 2;
             } else {
-                cell.textPos.x = cell.x + cell.styles.cellPadding;
+                var indentSize = cell.indentSize || 0;
+                cell.textPos.x = cell.x + cell.styles.cellPadding + indentSize;
             }
 
             var data = hooksData({column: column, row: row});
